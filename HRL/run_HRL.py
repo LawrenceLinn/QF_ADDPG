@@ -12,7 +12,7 @@ model_params = {
         'action_size':2#policy
     },
     'device':torch.device('cpu'),
-    'capacity':100000,
+    'capacity':10000,
     'result_path':'0',
     'episodes':100,
     'record':1,
