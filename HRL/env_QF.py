@@ -126,11 +126,11 @@ class marketEnv(gym.Env):
         '''
         for i in range(self.next_obs.shape[1]):
             if Low[i]<QPLn1[i]:
-                if policy[i]==1 and delta_weight[i+1]<0:
+                if policy[i]==0 and delta_weight[i+1]<0:
                     delta_weight[i+1] = 0
                     self.y1[i + 1] = QPLn1[i] / self.obs[-1, i, 3]
                     policy_reward [i] = Close[i]/QPLn1[i]
-                elif policy[i]==2 and delta_weight[i+1]>0:
+                elif policy[i]==1 and delta_weight[i+1]>0:
                     delta_weight[i+1] = 0
                     self.y1[i + 1] = QPLn1[i] / self.obs[-1, i, 3]
                     policy_reward[i] = Close[i] / QPLn1[i]
@@ -138,11 +138,11 @@ class marketEnv(gym.Env):
                     pass
             else:
                 if High[i]>QPLp1[i]:
-                    if policy[i]==1 and delta_weight[i+1]<0:
+                    if policy[i]==0 and delta_weight[i+1]<0:
                         delta_weight[i + 1] = 0
                         self.y1[i + 1] = QPLp1[i] / self.obs[-1, i, 3]
                         policy_reward[i] = Close[i] / QPLp1[i]
-                    elif policy[i] == 2 and delta_weight[i + 1] > 0:
+                    elif policy[i] == 1 and delta_weight[i + 1] > 0:
                         delta_weight[i + 1] = 0
                         self.y1[i + 1] = QPLp1[i] / self.obs[-1, i, 3]
                         policy_reward[i] = Close[i] / QPLp1[i]
@@ -152,9 +152,10 @@ class marketEnv(gym.Env):
 
         delta_weight[0] -= sum(delta_weight)
 
-        if weight[0]+delta_weight[0]>0 and weight[0]+delta_weight[0]<1:
+
+        if self.portfolio.w0[0]+delta_weight[0]>0 and self.portfolio.w0[0]+delta_weight[0]<1:
             weight = self.portfolio.w0 + delta_weight
-        elif weight[0]+delta_weight[0]<0:
+        elif self.portfolio.w0[0]+delta_weight[0]<0:
             weight = self.portfolio.w0 + delta_weight*abs(weight[0]/delta_weight[0])
         else:
             weight = self.portfolio.w0 + delta_weight * abs((1-weight[0])/ delta_weight[0])

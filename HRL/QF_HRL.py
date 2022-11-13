@@ -179,9 +179,9 @@ class QF_HRL(nn.Module):
 
         self.buffer = ReplayBuffer(self.capacity)
 
-        self.actor_optim = optim.Adam(self.actor.parameters(), lr=1e-5).to(self.device)
-        self.critic_optim = optim.Adam(self.critic.parameters(), lr=1e-4).to(self.device)
-        self.policy_optim = optim.Adam(self.policy.parameters(), lr=1e-4).to(self.device)
+        self.actor_optim = optim.Adam(self.actor.parameters(), lr=1e-5)
+        self.critic_optim = optim.Adam(self.critic.parameters(), lr=1e-4)
+        self.policy_optim = optim.Adam(self.policy.parameters(), lr=1e-4)
         self.actor.reset_parameters()
         self.critic.reset_parameters()
         self.actor_target.reset_parameters()

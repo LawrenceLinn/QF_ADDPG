@@ -13,7 +13,7 @@ model_params = {
     },
     'device':torch.device('cpu'),
     'capacity':10000,
-    'result_path':'0',
+    'result_path':'2',
     'episodes':100,
     'record':1,
     'batch_size':64,
@@ -38,7 +38,7 @@ env_params = {
     'portfolio_params':{
         'cost':0,
         'mode':'Train',
-        'eta':0.01,
+        'eta':0.1,
     },
     'normalize_factor':normalize_factor,
     'mode':'Train',
@@ -50,7 +50,7 @@ testenv_params = {
     'portfolio_params':{
         'cost':1e-3,
         'mode':'Test',
-        'eta':0.01,
+        'eta':0.1,
     },
     'normalize_factor':normalize_factor,
     'mode':'Test',
