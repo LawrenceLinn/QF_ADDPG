@@ -15,14 +15,19 @@ class ReplayBuffer(object):
         self.count = 0
         self.buffer = deque()
         random.seed(random_seed)
+        # self.prob = deque()
 
     def add(self, *transition):
         # experiment = (s, a, r, t, s2)
+
         if self.count < self.buffer_size:
             self.buffer.append(transition)
+            # self.prob.append(abs(transition[2]))
             self.count += 1
         else:
             self.buffer.popleft()
+            # self.prob.popleft()
+            # self.prob.append(abs(transition[2]))
             self.buffer.append(transition)
 
     def size(self):
@@ -32,37 +37,25 @@ class ReplayBuffer(object):
         if self.count < batch_size:
             return
 
+        # print(torch.softmax(self.prob))
+        # print(np.random.choice(a=self.buffer, size=batch_size, replace=True, p=self.prob))
         batch = random.sample(self.buffer, batch_size)
 
         s0, a0, r1, t1, s1 = zip(*batch)
         obs_0 = []
-        # adj_0 = []
-        # delta_pos_0 = []
         obs_1 = []
-        # adj_1 = []
-        # delta_pos_1 = []
         for i in range(batch_size):
             obs_0.append(s0[i])
             obs_1.append(s1[i])
-        #     adj_0.append(s0[i][1].unsqueeze(0))
-        #     adj_1.append(s1[i][1].unsqueeze(0))
-        #     delta_pos_0.append(s0[i][2].unsqueeze(0))
-        #     delta_pos_1.append(s1[i][2].unsqueeze(0))
-        #
+
         obs_0 = torch.cat(obs_0,0)
         obs_1 = torch.cat(obs_1,0)
-        # adj_0 = torch.cat(adj_0,0)
-        # adj_1 = torch.cat(adj_1,0)
-        # delta_pos_0= torch.cat(delta_pos_0,0)
-        # delta_pos_1 = torch.cat(delta_pos_1,0)
-
-        # s0_batch = (obs_0, adj_0, delta_pos_0)
 
         s0_batch = obs_0
         a0_batch = torch.tensor(np.array(a0), dtype=torch.float)
 
 
-        r1_batch = torch.tensor(np.array(r1), dtype=torch.float).unsqueeze(1)
+        r1_batch = torch.tensor(np.array(r1), dtype=torch.float)
         t1_batch = torch.tensor(np.array(t1), dtype=torch.float)
 
         # s1_batch = (obs_1, adj_1, delta_pos_1)

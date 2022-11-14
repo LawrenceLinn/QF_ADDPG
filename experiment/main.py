@@ -13,7 +13,7 @@ model_params = {
     },
     'device':torch.device('cpu'),
     'capacity':100000,
-    'result_path':'0',
+    'result_path':'1',
     'episodes':100,
     'record':1,
     'batch_size':64,

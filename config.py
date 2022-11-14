@@ -7,7 +7,7 @@ import shutil,time
 
 
 '''Random seed'''
-def setup_seed(seed = 0):
+def setup_seed(seed = 123):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)

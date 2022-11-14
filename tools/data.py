@@ -73,7 +73,7 @@ class DataLoader(object):
             self.data = dt_arr[:int(self.train_ratio * dt_arr.shape[0])]
             print(f'The shape of data is {self.data.shape}--{self.mode} mode')
         if self.mode == 'Test':
-            self.data = dt_arr[int(self.train_ratio * dt_arr.shape[0]):]
+            self.data = dt_arr[int(self.train_ratio * dt_arr.shape[0])-self.win_size:]
             print(f'The shape of data is {self.data.shape}--{self.mode} mode')
 
     def step(self):

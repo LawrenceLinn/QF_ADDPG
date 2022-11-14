@@ -1,6 +1,6 @@
 import torch
-from HRL.QF_HRL import QF_HRL
-from HRL.env_QF import marketEnv
+from HRL_comp.QF_HRL_comp import HRL_comp
+from HRL_comp.env_QF_comp import marketEnv
 import config
 
 '''
@@ -15,19 +15,18 @@ eta
 win_size = 4
 gap = 1
 normalize_factor = 100
-product_num = 19
-datatype = 'NDX'
+product_num = 9
+datatype = 'frex'
 
 model_params = {
-    'agent_params':{
+    'network_params':{
         'product_num':product_num,
         'win_size':win_size,
         'action_size':2#policy
     },
     'device':torch.device('cpu'),
     'capacity':10000,
-    'datatype':datatype,
-    'result_path':datatype,
+    'result_path':'test',
     'episodes':50,
     'record':0,
     'batch_size':64,
@@ -91,11 +90,12 @@ Policy输出反弹or突破or hold
 
 '''
 
+torch.autograd.set_detect_anomaly(True)
 config.setup_seed()
 
 env = marketEnv(**env_params)
 env_test = marketEnv(**testenv_params)
-model = QF_HRL(**model_params)
+model = HRL_comp(**model_params)
 model.train(env,env_test)
 
 
