@@ -13,7 +13,6 @@ from torch.autograd import Variable
 from torch.distributions import Categorical
 from tools.replay_buffer import ReplayBuffer
 from tools.OUNoise import OrnsteinUhlenbeckActionNoise
-from tensorboardX import SummaryWriter
 from tqdm import tqdm
 import config
 from multiprocessing import Process,Queue,set_start_method,get_context
@@ -38,17 +37,16 @@ class HRLNet(nn.Module):
         super(HRLNet, self).__init__()
         for key, value in network_params.items():
             setattr(self, key, value)
+
         self.conv1 = nn.Conv2d(
             in_channels=1,
             out_channels=32,
             kernel_size=(3, 1),
-            # stride = (1,3)
         )
         self.conv2 = nn.Conv2d(
             in_channels=32,
             out_channels=32,
             kernel_size=(self.win_size - 3, 1),
-            # stride = (1, win_size-2)
         )
 
         self.state_encoder = nn.Sequential(Unsqueeze(1),
@@ -57,62 +55,58 @@ class HRLNet(nn.Module):
                                        self.conv2,
                                        nn.ReLU(),
                                        nn.Flatten())
-        self.linear1 = nn.Linear(self.product_num * 32, 64)
-        self.linear2 = nn.Linear(64, 64)
-        self.linear3 = nn.Linear(64, self.product_num + 1)
-        self.action_decoder = nn.Sequential(self.linear1,
+
+        self.state_decoder = nn.Sequential(nn.Linear(self.product_num * 32, 64),
                                             nn.ReLU(),
-                                            self.linear2,
+                                            nn.Linear(64, 64),
+                                           nn.ReLU())
+
+        self.action_decoder = nn.Sequential(nn.Linear(self.product_num * 32, 64),
                                             nn.ReLU(),
-                                            self.linear3)
+                                            nn.Linear(64, self.product_num + 1),
+                                            nn.Softmax(dim = 1))
 
-        self.weight_encoder = nn.Linear(self.product_num+1,self.product_num + 1)
+        self.weight_encoder = nn.Sequential(nn.Linear(self.product_num+1,64),
+                                            nn.ReLU(),
+                                            nn.Linear(64, 64),
+                                            nn.ReLU())
 
+        self.Q_decoder = nn.Sequential(nn.Linear(64,64),
+                                        nn.ReLU(),
+                                        nn.Linear(64, 64),
+                                        nn.ReLU(),
+                                        nn.Linear(64, 1),
+                                        nn.Tanh())
 
+        self.policy_encoder = nn.GRU(self.product_num,self.product_num,4,batch_first=True)
 
-        self.Q_decoder = nn.Linear(self.product_num+1,1)
-
-        self.linear4 = nn.Linear(32,64)
-        self.linear5 = nn.Linear(64,64)
-        self.linear6 = nn.Linear(64,self.product_num)
-        self.pg_decoder = nn.Sequential(self.linear4,
+        self.policy_decoder = nn.Sequential(nn.Linear(self.win_size-1,64),
                                     nn.ReLU(),
-                                    self.linear5,
+                                    nn.Linear(64,64),
                                     nn.ReLU(),
-                                    self.linear6,
+                                    nn.Linear(64,self.action_size),
                                     nn.Softmax(dim = 1))
 
-        # Define the  vars for recording log prob and reawrd
         self.saved_log_probs = []
         self.rewards = []
-
-    def reset_parameters(self):
-        self.linear1.weight.data.uniform_(*hidden_init(self.linear1))
-        self.linear2.weight.data.uniform_(*hidden_init(self.linear2))
-        self.linear3.weight.data.uniform_(-3e-3, 3e-3)
-        self.linear4.weight.data.uniform_(*hidden_init(self.linear4))
-        self.linear5.weight.data.uniform_(*hidden_init(self.linear5))
-        self.linear6.weight.data.uniform_(-3e-3, 3e-3)
-        self.weight_encoder.weight.data.uniform_(*hidden_init(self.weight_encoder))
-        self.Q_decoder.weight.data.uniform_(-3e-3, 3e-3)
 
 
     def actor_forward(self,state):
         state_coding = self.state_encoder(state)
-        action_coding = self.action_decoder(state_coding)
-        return F.softmax(action_coding,dim = 1)
+        action = self.action_decoder(state_coding)
+        return action
 
     def critic_forward(self,state,action):
-        action_coding = F.relu(self.actor_forward(state))
-        weight_coding = F.relu(self.weight_encoder(action))
-        Q = self.Q_decoder(torch.add(action_coding,weight_coding))
+        state_coding = self.state_encoder(state)
+        state_coding2 = self.state_decoder(state_coding)
+        weight_coding = self.weight_encoder(action)
+        Q = self.Q_decoder(torch.add(state_coding2,weight_coding))
         return Q
 
     def policy_forward(self,state):
-        state_coding = self.state_encoder(state)
-        policy_coding = self.pg_decoder(state_coding.view(self.product_num,-1))
+        state_coding = self.policy_encoder(state)[0]
+        policy_coding = self.policy_decoder(state_coding.view(state_coding.size(-1),-1))
         return policy_coding
-
 
 class HRL_comp(nn.Module):
     def __init__(self,**model_params):
@@ -122,20 +116,16 @@ class HRL_comp(nn.Module):
 
         self.Network = HRLNet(**self.network_params)
         self.target_Network = copy.deepcopy(self.Network)
-        self.actor_optim = optim.Adam(itertools.chain(self.Network.action_decoder.parameters(),
+        self.actor_optim = optim.Adam(itertools.chain(self.Network.state_encoder.parameters(),
                                                       self.Network.action_decoder.parameters()),lr = 1e-4)
 
         self.critic_optim = optim.Adam(itertools.chain(self.Network.state_encoder.parameters(),
-                                                       self.Network.action_decoder.parameters(),
                                                        self.Network.weight_encoder.parameters(),
                                                        self.Network.Q_decoder.parameters()),lr = 1e-3)
-        self.policy_optim = optim.Adam(itertools.chain(self.Network.state_encoder.parameters(),
-                                                   self.Network.pg_decoder.parameters()),lr = 1e-4)
 
+        self.policy_optim = optim.Adam(itertools.chain(self.Network.policy_encoder.parameters(),
+                                                        self.Network.policy_decoder.parameters()),lr = 1e-4)
         self.buffer = ReplayBuffer(self.capacity)
-
-        self.Network.reset_parameters()
-        self.target_Network.reset_parameters()
 
         self.actor_loss = 0
         self.critic_loss = 0
@@ -149,14 +139,16 @@ class HRL_comp(nn.Module):
         return action
 
     def policy_act(self, state):
-        # state = torch.tensor(state, dtype=torch.float) # 1,1,10,3
-        # Get the probability distribution
         probs = self.Network.policy_forward(state.to(self.device)).cpu()
         m = Categorical(probs)
         # Sample action from the distribution
         action = m.sample()
         self.Network.saved_log_probs.append(m.log_prob(action))
         return action
+
+    def soft_update(self,net_target, net, tau):
+        for target_param, param in zip(net_target.parameters(), net.parameters()):
+            target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
 
     def online_learn(self):
         if self.buffer.count < self.batch_size:
@@ -167,6 +159,7 @@ class HRL_comp(nn.Module):
         target_q = self.target_Network.critic_forward(s1_batch, self.target_Network.actor_forward(s1_batch)).detach()
 
         self.y_i = []
+
         for k in range(self.batch_size):
             if t1_batch[k]:
                 self.y_i.append((r1_batch[k]).numpy())
@@ -188,32 +181,22 @@ class HRL_comp(nn.Module):
             self.actor_loss.backward()
             self.actor_optim.step()
 
-        def soft_update(net_target, net, tau):
-            for target_param, param in zip(net_target.parameters(), net.parameters()):
-                target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
 
         critic_learn()
         actor_learn()
-        soft_update(self.target_Network, self.Network, self.tau)
+        self.soft_update(self.target_Network, self.Network, self.tau)
 
     def policy_learn(self):
         R = 0
         p_loss = []
         returns = []
-
-        # Reversed Traversal and calculate cumulative rewards for t to T
-        ''''''
         for r in self.Network.rewards[::-1]:
-            R = r + 0.95 * R  # R: culumative rewards for t to T
-            returns.insert(0, R)  # Evaluate the R and keep original order
+            R = r + 0.95 * R
+            returns.insert(0, R)
         returns = torch.tensor(returns).to(self.device)
-        # Normalized returns
         returns = (returns - returns.mean()) / (returns.mean() + 1e-8)
-
-        # After one episode, update once
         for log_prob, R in zip(self.Network.saved_log_probs, returns):
-            # Actual loss definition:
-            p_loss.append(-log_prob.clone() * R.clone())
+            p_loss.append(-log_prob * R)
         self.policy_optim.zero_grad()
         self.policy_loss = torch.cat(p_loss).sum()
         self.policy_loss.backward()
@@ -221,24 +204,20 @@ class HRL_comp(nn.Module):
         del self.Network.rewards[:]
         del self.Network.saved_log_probs[:]
 
-    def test(self,env,episode,loader = None):
+    def test(self,env,episode):
         s0 = env.reset()
-        assets_name = ['Cash']+env.dataloader.product_name
+        # assets_name = ['Cash']+env.dataloader.product_name
         test_reward = 0
         for test_step in range(env.dataloader.max_step):
             a0 = self.act(s0)
-            p0 = self.policy_act(s0)
+            p0 = self.Network.policy_forward(s0.to(self.device)).cpu()
+            p0 = torch.argmax(p0,dim = 1)
             s1, r1, pr1, test_done, info= env.step(a0,p0)
-            if (env.portfolio.w0<0).any() or (env.portfolio.w0>1).any():
-                print('warning')
-            # self.buffer.add(s0, a0, r1, test_done, s1)
             test_reward += r1
             s0 = s1
-            if self.record:
-                self.writer.add_scalar(f'Test return/{episode + 1}', env.portfolio.p0, test_step)
-                assest_weight = dict(zip(assets_name, env.portfolio.w0))
-                self.writer.add_scalars(f'Test position/{episode + 1}', assest_weight, test_step)
         env.render()
+        self.writer.add_scalar(f'Test return', env.portfolio.p0, episode)
+
 
     def train(self,env,env_test,loader = None):
         '''
@@ -248,8 +227,8 @@ class HRL_comp(nn.Module):
         :return:
         '''
 
-        record_gap = 10
-        learn_gap = 1
+        record_gap = 30
+        learn_gap = 20
         assets_name = ['Cash']+env.dataloader.product_name
         logdir = f'../results/{self.result_path}'
         config.reset_logdir(logdir)
@@ -264,43 +243,24 @@ class HRL_comp(nn.Module):
             max_Q = [0]
             train_reward = 0
             for train_step in tqdm(range(env.dataloader.max_step), desc=f'Training episode {episode}'):
-                total_step += 1
                 # Add noise
                 action = self.act(s0)
-
-                '''visualize network output'''
-                if train_step % record_gap == 0 and self.record and episode % 1 == 0:
-                    assest_weight = dict(zip(assets_name, action))
-                    self.writer.add_scalars(f'Train action/{episode + 1}', assest_weight, train_step)
-
                 a0 = action + self.actor_noise()
                 self.p0 = self.policy_act(s0)
                 s1, r1, policy_reward, train_done, info = env.step(a0,self.p0)
                 self.Network.rewards.append(policy_reward)
-                '''visualize action with noise'''
-
-                if train_step % record_gap == 0 and self.record and episode % 1 == 0:
-                    assest_weight = dict(zip(assets_name, env.portfolio.w0))
-                    self.writer.add_scalars(f'Train position/{episode + 1}', assest_weight, train_step)
-
-                absreward_list.append(abs(r1-env.portfolio.entropy_loss))
-                if abs(r1-env.portfolio.entropy_loss)>=(np.mean(absreward_list)):#TODO:
-                    self.buffer.add(s0, a0, r1, train_done, s1)
+                self.buffer.add(s0, a0, r1, train_done, s1)
                 train_reward += r1
                 s0 = s1
 
                 '''ddpg learn and visualize loss'''
-                # if episode>5:
-                #     if total_step % learn_gap == 0:
-                self.online_learn()
-                max_Q.append(np.amax(self.y_i))
+                if episode>5:
+                    total_step += 1
+                    self.online_learn()
 
-                if train_step % record_gap == 0 and self.record:
-                    self.writer.add_scalar('Loss/Actor', self.actor_loss, total_step)
-                    self.writer.add_scalar('Loss/Critic', self.critic_loss, total_step)
+                self.writer.add_scalar('Loss/Actor', self.actor_loss, total_step)
+                self.writer.add_scalar('Loss/Critic', self.critic_loss, total_step)
 
-                    '''visualize the return of training set'''
-                    self.writer.add_scalar(f'Train return/{episode + 1}', env.portfolio.p0, train_step)
 
             self.policy_learn()
             print(f'Actor loss:{self.actor_loss:.5f}\n'

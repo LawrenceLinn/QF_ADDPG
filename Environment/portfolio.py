@@ -17,6 +17,7 @@ class Portfolio(object):
         for key, value in port_param.items():
             setattr(self, key, value)
         self.infos = []
+        self.w_1 = 0
 
 
     def step(self,w1,y1,reset = 0):
@@ -29,15 +30,10 @@ class Portfolio(object):
         w0 = self.w0
         p0 = self.p0
         y0 = self.y0
-        # dw1 = ((y0 * w0) / (y0@w0 + 1e-8))
+        dw = y0*w0/(y0@w0)
 
-        # '''如果为回测模式 并且选择止盈 则'''
-        # if self.mode == "Test" and reset == 1:
-        #     mu1 = self.cost * (np.abs(w1[1:])).sum()
-        # else:
-        #     mu1 = self.cost * (np.abs(dw1[1:] - w1[1:])).sum()
 
-        mu1 = self.cost * (np.abs(w0[1:] - w1[1:])).sum()
+        mu1 = self.cost * (np.abs(dw[1:] - w1[1:])).sum()
 
         p1 = p0 * (1 - mu1) * np.dot(y1, w1)
 
@@ -47,7 +43,9 @@ class Portfolio(object):
 
         reward = r1*100-self.entropy_loss
 
+        self.w_1 = self.w0
         self.w0 = w1
+        self.p_1 = self.p0
         self.p0 = p1
         self.y0 = y1
 
@@ -66,6 +64,8 @@ class Portfolio(object):
     def reset(self):
         self.infos = []
         self.w0 = np.array([1.0] + [0.0] * self.product_num)
+        self.w_1 = np.array([1.0] + [0.0] * self.product_num)
         self.p0 = 1.0
+        self.p_1 = 1.0
         self.y0 = np.ones((self.product_num+1,), dtype=float)
         self.y0[0] = 1

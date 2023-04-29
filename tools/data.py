@@ -2,6 +2,7 @@
 @Author: Runsheng Lin
 Inspired by Qiu.
 """
+
 import numpy as np
 import pandas as pd
 import matplotlib as plt
@@ -49,14 +50,6 @@ class DataLoader(object):
         # self.end_date = datetime.datetime(self.df.index[-1])
         assert self.gap <= self.win_size
 
-    def date_to_index(self,date_string):
-        # Transfer the date to index 0, 1, 2 ,3...
-        return (datetime.datetime.strptime(date_string, date_format) - start_datetime).days
-
-    def index_to_date(self,index):
-        # Transfer index back to date
-        return (start_datetime + datetime.timedelta(index)).strftime(date_format)
-
 
     def load_obs(self):
         data_root = f'../Data/{self.data_type}'
@@ -65,7 +58,7 @@ class DataLoader(object):
         for filepath in filenames:
             self.product_name.append(filepath[:-3])
             '''2048,6'''
-            self.df = pd.read_csv(f'{data_root}/{filepath}',index_col=[0,1,2],header=[0]).dropna(axis=0)[self.market_feature].iloc[::-1]
+            self.df = pd.read_csv(f'{data_root}/{filepath}',index_col=[0,1,2],header=[0]).iloc[-2048:,:].dropna(axis=0)[self.market_feature]
             dt_list.append(np.array(self.df))
         '''2048,6,9'''
         dt_arr = np.array(dt_list).transpose(1,0,2)

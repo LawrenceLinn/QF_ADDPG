@@ -54,34 +54,15 @@ class marketEnv(gym.Env):
 
     def step(self,action,policy):
 
-        def action2position(self,action):
+        def action2position(action):
             action = np.clip(action, 0, 1)
             weight = action
-
             weight = weight/(weight.sum() + 1e-8)
-            # weight[0] += np.clip(1 - weight.sum(), 0, 1)
             return weight
 
 
-
-
-        '''
-        actor输出weight
-        PG输出policy 
-        价格走位 
-        1.收盘价在QPL+之上:P0看涨
-            1.直线突破+
-            2.下探-后反弹
-        2.收盘价在QPL+-之间:P1看震荡
-            1.震荡行情 触碰QPL做相反操作 对delta_w操作（反向操作砍掉50% or 整体仓位*50%）：eta*delta*(C/QPL-1)
-        3.收盘价在QPL-之下:P2看跌
-            1.直线下探- 判断delta 反向操作砍掉 
-            2，触碰+后反弹
-        '''
-
-
         policy_reward = np.ones([self.portfolio.product_num])
-        weight = action2position(self,action)
+        weight = action2position(action)
         delta_weight = weight-self.portfolio.w0
 
         Open =  self.next_obs[0,:,0]
@@ -91,51 +72,21 @@ class marketEnv(gym.Env):
         QPLp1 =  self.next_obs[0,:,4]
         QPLn1 = self.next_obs[0, :, 5]
 
-        # for i in range(self.next_obs.shape[1]):
-        #     '''收盘价在QPL+之上'''
-        #     if Close[i]>QPLp1[i] and policy==1:#看涨
-        #         if QPLn1[i]<Low[i]:#直线突破
-        #             if delta_weight[i+1]<0:
-        #                 delta_weight[i+1] = 0
-        #                 self.y1[i+1] = QPLp1[i]/self.obs[-1,i,3]
-        #                 policy_reward [i] = Close[i]/QPLp1[i]
-        #         elif QPLn1[i]>Low[i]:#下探QPL-
-        #             if delta_weight[i+1]<0:
-        #                 delta_weight[i+1] = 0
-        #                 self.y1[i + 1] = self.next_obs[:, i, 5] / self.obs[-1, i, 3]
-        #                 policy_reward[i] = self.next_obs[:, i, 3] / self.next_obs[:, i, 5]
-        #     if self.next_obs[:,i,3]<self.next_obs[:,i,4] and self.next_obs[:,i,3]>self.next_obs[:,i,5] and policy==2:#看震荡
-        #         if self.next_obs[:,i,5]>self.next_obs[:,i,2] and :#下探QPL-
-
-
-
-        '''
-        价格走势
-        1.最低价突破QPLn1
-            1.Policy看涨 反向调仓-50%
-            2.Policy看跌 反向调仓 -50%
-        2.L没突破QPLn1
-            2.1.H突破QPLp1
-                1.Policy看涨
-                2.Policy看跌
-            2.1 H没突破QPLp1
-                delta = 0
-        '''
         for i in range(self.next_obs.shape[1]):
-            if Low[i]<QPLn1[i]:
-                if policy[i]==0 and delta_weight[i+1]<0:
-                    delta_weight[i+1] *= 0.5
+            if Low[i] < QPLn1[i]:
+                if policy[i] == 0 and delta_weight[i + 1] < 0:
+                    delta_weight[i + 1] *= 0.5
                     self.y1[i + 1] = QPLn1[i] / self.obs[-1, i, 3]
-                    policy_reward [i] = Close[i]/QPLn1[i]
-                elif policy[i]==1 and delta_weight[i+1]>0:
-                    delta_weight[i+1] *= 0.5
+                    policy_reward[i] = Close[i] / QPLn1[i]
+                elif policy[i] == 1 and delta_weight[i + 1] > 0:
+                    delta_weight[i + 1] *= 0.5
                     self.y1[i + 1] = QPLn1[i] / self.obs[-1, i, 3]
                     policy_reward[i] = Close[i] / QPLn1[i]
                 else:
                     pass
             else:
-                if High[i]>QPLp1[i]:
-                    if policy[i]==0 and delta_weight[i+1]<0:
+                if High[i] > QPLp1[i]:
+                    if policy[i] == 0 and delta_weight[i + 1] < 0:
                         delta_weight[i + 1] *= 0.5
                         self.y1[i + 1] = QPLp1[i] / self.obs[-1, i, 3]
                         policy_reward[i] = Close[i] / QPLp1[i]
@@ -146,10 +97,9 @@ class marketEnv(gym.Env):
                 else:
                     delta_weight[i] *= 0.5
 
-        policy_weight = delta_weight-(weight-self.portfolio.w0)
+        policy_weight = delta_weight - (weight - self.portfolio.w0)
 
         delta_weight[0] = -sum(delta_weight[1:])
-
 
         if self.portfolio.w0[0]+delta_weight[0]>0 and self.portfolio.w0[0]+delta_weight[0]<1:
             weight = self.portfolio.w0 + delta_weight
@@ -164,33 +114,24 @@ class marketEnv(gym.Env):
         self.infos.append(info)
 
         self.obs, done2, self.next_obs = self.dataloader.step()
-        state = (self.obs[1:,:,3]/self.obs[:-1,:,3]-1)*self.normalize_factor
-        # cash = np.zeros((state.shape[0], 1))
-        # state = np.concatenate([cash,state],axis=1)
-        self.y1 = np.concatenate([np.ones([1,1]),self.next_obs[:,:,3]/self.obs[-1,:,3]*policy_reward],axis=1).squeeze()#TODO:
-        # self.y1 = np.concatenate([np.ones([1]),self.obs[-1,:,3]/self.obs[-2,:,3]*policy_reward],axis=0).squeeze()#TODO:
+        state = np.log(self.obs[1:,:,3]/self.obs[:-1,:,3])*self.normalize_factor
 
-        policy_reward = policy_reward@policy_weight[1:]
+        self.y1 = np.concatenate([np.ones([1]),self.obs[-1,:,3]/self.obs[-2,:,3]*policy_reward],axis=0).squeeze()
+
+        policy_reward = (policy_reward-1)@policy_weight[1:]*1000
 
         return torch.tensor(state,dtype=torch.float32).unsqueeze(0), reward, policy_reward, done1 or done2, info
 
     def reset(self):
         self.portfolio.reset()
         self.obs, self.next_obs = self.dataloader.reset()
-        state = (self.obs[1:,:,3]/self.obs[:-1,:,3]-1)*self.normalize_factor#win_size,prod_num
-        self.y1 = np.concatenate([np.ones([1,1]),self.next_obs[:,:,3]/self.obs[-1,:,3]],axis=1).squeeze()#TODO:修改
-        # self.y1 = np.concatenate([np.ones([1]),self.obs[-1,:,3]/self.obs[-2,:,3]],axis=0).squeeze()#TODO:
-
-        # cash = np.zeros((state.shape[0],1))
-        # state = np.concatenate([cash,state],axis = 1)
-
+        state = np.log(self.obs[1:,:,3]/self.obs[:-1,:,3])*self.normalize_factor
+        self.y1 = np.concatenate([np.ones([1,1]),self.next_obs[:,:,3]/self.obs[-1,:,3]],axis=1).squeeze()
         return torch.tensor(state,dtype=torch.float32).unsqueeze(0)
 
     def render(self):
         print(f'{self.mode}======')
         df_info = pd.DataFrame(self.infos)
-        # df_info['date'] = pd.to_datetime(df_info['date'], format='%Y-%m-%d')
-        # df_info.set_index('date', inplace=True)
         mdd = max_drawdown(df_info.portfolio_value)
         sharpe_ratio = sharpe(df_info.rate_of_return)
         print("Max drawdown", mdd)

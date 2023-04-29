@@ -17,44 +17,62 @@ class Portfolio(object):
         for key, value in port_param.items():
             setattr(self, key, value)
         self.infos = []
-        self.w_1 = 0
+        self.share = np.array([0.0] * self.product_num)
+        self.cash = self.init_portfolio
 
+    def step(self,cash,share,strike_price,Close):
+        '''
 
-    def step(self,w1,y1,reset = 0):
-        """
-        :param w1:
-        :param y1:
-        :param reset:
-        :return: reward, info, done
-        """
-        w0 = self.w0
+        :param share:
+        :param price:
+        :return:
+        '''
         p0 = self.p0
-        y0 = self.y0
-        dw = y0*w0/(y0@w0)
+        delta_share = share - self.share
 
+        sell_stock = delta_share<0
+        sell = delta_share[sell_stock]*strike_price[sell_stock]
 
-        mu1 = self.cost * (np.abs(dw[1:] - w1[1:])).sum()
+        cash = self.cash - sell.sum()*(1-self.cost)
 
-        p1 = p0 * (1 - mu1) * np.dot(y1, w1)
+        buy_stock = delta_share > 0
+        buy = delta_share[buy_stock] * strike_price[buy_stock]
 
-        rho1 = p1 / p0 - 1
-        r1 = np.log((p1 + 1e-8) / (p0 + 1e-8))
-        self.entropy_loss = self.eta*(1-(w1**2).sum())
+        if buy.sum()*(1+self.cost)>cash:
+            delta_share[buy_stock] *= cash/buy.sum()*(1+self.cost)
+            buy = delta_share[buy_stock] * strike_price[buy_stock]
 
-        reward = r1*100-self.entropy_loss
+        cash = cash - buy.sum()
 
-        self.w_1 = self.w0
-        self.w0 = w1
-        self.p_1 = self.p0
+        share = self.share+delta_share
+
+        share_value = share*Close
+
+        p1 = cash + share_value.sum()
+
+        share_weight = share_value/p1
+
+        self.weight = np.concatenate([[cash/p1],share_weight],axis=0)
+
+        rho1 = p1/self.p0
+
+        r1 = np.log(rho1)
+
+        self.share = share
+        self.cash = cash
         self.p0 = p1
-        self.y0 = y1
 
-        # Run out of money, done
-        done = p1 == 0
+        self.unit_rt = p1/self.init_portfolio
+
+        self.entropy_loss = self.eta * (1 - (self.weight ** 2).sum())
+
+        reward = r1 * 100 - self.entropy_loss
+
+        done = p1<=0
 
         info = {
-            "portfolio_value": p1,
-            "rate_of_return": rho1,
+            "portfolio_value": self.unit_rt,
+            "rate_of_return": rho1-1,
             "log_return": r1,
         }
         self.infos.append(info)
@@ -63,9 +81,7 @@ class Portfolio(object):
 
     def reset(self):
         self.infos = []
-        self.w0 = np.array([1.0] + [0.0] * self.product_num)
-        self.w_1 = np.array([1.0] + [0.0] * self.product_num)
-        self.p0 = 1.0
-        self.p_1 = 1.0
-        self.y0 = np.ones((self.product_num+1,), dtype=float)
-        self.y0[0] = 1
+        self.share = np.array([0.0] * self.product_num)
+        self.p0 = self.init_portfolio
+        self.unit_rt = 1
+        self.cash = self.p0

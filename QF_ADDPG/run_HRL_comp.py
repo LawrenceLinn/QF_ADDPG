@@ -1,35 +1,25 @@
 import torch
-from HRL.QF_HRL import QF_HRL
-from HRL.env_QF import marketEnv
+from QF_HRL_comp import HRL_comp
+from env_QF_comp import marketEnv
 import config
-
-'''
-实验变量
-
-eta
-交易手续费
-
-'''
-
 
 win_size = 4
 gap = 1
-normalize_factor = 100
-product_num = 19
-datatype = 'NDX'
+normalize_factor = 1000
+product_num = 5
+datatype = 'forex'
 
 model_params = {
-    'agent_params':{
+    'network_params':{
         'product_num':product_num,
         'win_size':win_size,
-        'action_size':2#policy
+        'action_size':2
     },
     'device':torch.device('cpu'),
     'capacity':10000,
-    'datatype':datatype,
-    'result_path':datatype,
-    'episodes':50,
-    'record':0,
+    'result_path':'comp1',
+    'episodes':100,
+    'record':1,
     'batch_size':64,
     'gamma':0.99,
     'tau':0.001,
@@ -40,7 +30,6 @@ loader_params = {
     'data_type':datatype,
     'train_ratio':0.8,
     'win_size':win_size,
-    'start_idx': 1,
     'feature_num': 4,
     'market_feature': ['Open','High','Low','Close','QPL1','QPL-1'],
     'mode':'Train',
@@ -56,10 +45,10 @@ testloader_params = {
     'feature_num': 4,
     'market_feature': ['Open','High','Low','Close','QPL1','QPL-1'],
     'mode':'Test',
-    # 'args':args,
+
 }
 
-eta = 0.01
+eta = 0.05
 
 env_params = {
     'loader_params':loader_params,
@@ -85,17 +74,14 @@ testenv_params = {
     'mode':'Test'
 }
 
-#TODO:
-'''
-Policy输出反弹or突破or hold
-
-'''
-
-config.setup_seed()
 
 env = marketEnv(**env_params)
 env_test = marketEnv(**testenv_params)
-model = QF_HRL(**model_params)
+path_checkpoint = './model/checkpoint_comp_eta005.pth'
+
+model = HRL_comp(**model_params)
+
+torch.save(model.state_dict(),path_checkpoint)
 model.train(env,env_test)
 
 
